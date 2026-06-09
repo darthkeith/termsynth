@@ -9,12 +9,16 @@ use std::io::Result;
 use ratatui::DefaultTerminal;
 
 use crate::{
-    audio::execute_command, message::handle_input, model::Model,
-    update::update, view::view,
+    audio::{Audio, execute_command},
+    message::handle_input,
+    model::Model,
+    update::update,
+    view::view,
 };
 
 fn run(terminal: &mut DefaultTerminal) -> Result<()> {
     let mut model = Model::new();
+    let audio = Audio::new();
     loop {
         terminal.draw(|frame| view(&model, frame))?;
         let message = handle_input()?;
@@ -23,7 +27,7 @@ fn run(terminal: &mut DefaultTerminal) -> Result<()> {
             Some(result) => result,
             None => return Ok(()),
         };
-        execute_command(command);
+        execute_command(command, &audio);
     }
 }
 
