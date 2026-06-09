@@ -3,15 +3,16 @@ use std::io::Result;
 use crossterm::event::{self, KeyCode, KeyEventKind};
 
 pub enum Message {
+    Toggle,
     Continue,
     Quit,
 }
 
 fn key_to_message(key: KeyCode) -> Message {
-    if let KeyCode::Char('q') = key {
-        Message::Quit
-    } else {
-        Message::Continue
+    match key {
+        KeyCode::Char(' ') => Message::Toggle,
+        KeyCode::Char('q') => Message::Quit,
+        _ => Message::Continue,
     }
 }
 
