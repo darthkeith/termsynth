@@ -1,3 +1,4 @@
+mod audio;
 mod message;
 mod model;
 mod update;
@@ -7,17 +8,22 @@ use std::io::Result;
 
 use ratatui::DefaultTerminal;
 
-use crate::{message::handle_input, model::Model, update::update, view::view};
+use crate::{
+    audio::execute_command, message::handle_input, model::Model,
+    update::update, view::view,
+};
 
 fn run(terminal: &mut DefaultTerminal) -> Result<()> {
     let mut model = Model::new();
     loop {
         terminal.draw(|frame| view(&model, frame))?;
         let message = handle_input()?;
-        model = match update(model, message) {
-            Some(model) => model,
+        let command;
+        (model, command) = match update(model, message) {
+            Some(result) => result,
             None => return Ok(()),
-        }
+        };
+        execute_command(command);
     }
 }
 
