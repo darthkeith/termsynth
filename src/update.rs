@@ -10,6 +10,8 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
         Message::SelectDecay => model.selected = Param::Decay,
         Message::SelectSustain => model.selected = Param::Sustain,
         Message::SelectRelease => model.selected = Param::Release,
+        Message::Increment => model.adsr.increment(&model.selected),
+        Message::Decrement => model.adsr.decrement(&model.selected),
         Message::Toggle => {
             model.is_on = !model.is_on;
             let command = if model.is_on {

@@ -21,6 +21,16 @@ pub struct Model {
     pub selected: Param,
 }
 
+fn adjust(val: f32, delta: f32) -> f32 {
+    (val + delta).clamp(0.0, 1.0)
+}
+
+fn exp_adjust(val: f32, delta: f32) -> f32 {
+    let step = delta.abs();
+    let log_val = (val.log10() / step).round() * step;
+    10f32.powf(log_val + delta)
+}
+
 impl Adsr {
     fn new() -> Self {
         Self {
@@ -28,6 +38,24 @@ impl Adsr {
             decay: DECAY,
             sustain: SUSTAIN,
             release: RELEASE,
+        }
+    }
+
+    pub fn increment(&mut self, selected: &Param) {
+        match selected {
+            Param::Attack => self.attack = exp_adjust(self.attack, 0.1),
+            Param::Decay => self.decay = exp_adjust(self.decay, 0.1),
+            Param::Sustain => self.sustain = adjust(self.sustain, 0.01),
+            Param::Release => self.release = exp_adjust(self.release, 0.1),
+        }
+    }
+
+    pub fn decrement(&mut self, selected: &Param) {
+        match selected {
+            Param::Attack => self.attack = exp_adjust(self.attack, -0.1),
+            Param::Decay => self.decay = exp_adjust(self.decay, -0.1),
+            Param::Sustain => self.sustain = adjust(self.sustain, -0.01),
+            Param::Release => self.release = exp_adjust(self.release, -0.1),
         }
     }
 }
