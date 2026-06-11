@@ -3,6 +3,7 @@ const DECAY: f32 = 0.1;
 const SUSTAIN: f32 = 0.7;
 const RELEASE: f32 = 0.3;
 
+#[derive(Clone, Copy)]
 pub struct Adsr {
     pub attack: f32,
     pub decay: f32,

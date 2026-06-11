@@ -3,6 +3,7 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
 };
 
@@ -26,11 +27,13 @@ pub enum EnvelopeStage {
 pub struct Audio {
     _stream: Stream,
     is_on: Arc<AtomicBool>,
+    adsr_tx: mpsc::Sender<Adsr>,
 }
 
 pub enum Command {
     PlayNote,
     StopNote,
+    SetAdsr(Adsr),
     None,
 }
 
@@ -60,17 +63,24 @@ impl Audio {
             _ => panic!("unsupported sample format"),
         }
         let is_on = Arc::new(AtomicBool::new(false));
+        let (adsr_tx, adsr_rx) = mpsc::channel::<Adsr>();
         let write_sin = {
             let is_on = is_on.clone();
             let mut phase = 0.0;
             let mut envelope_stage = EnvelopeStage::Idle;
-            let adsr = Adsr::new();
+            let mut adsr = Adsr::new();
             let sample_rate = config.sample_rate() as f32;
             let phase_increment = 1.0 / sample_rate;
-            let attack_increment = 1.0 / (adsr.attack * sample_rate);
-            let decay_increment = 1.0 / (adsr.decay * sample_rate);
-            let release_increment = 1.0 / (adsr.release * sample_rate);
+            let mut attack_increment = 1.0 / (adsr.attack * sample_rate);
+            let mut decay_increment = 1.0 / (adsr.decay * sample_rate);
+            let mut release_increment = 1.0 / (adsr.release * sample_rate);
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                if let Ok(new_adsr) = adsr_rx.try_recv() {
+                    adsr = new_adsr;
+                    attack_increment = 1.0 / (adsr.attack * sample_rate);
+                    decay_increment = 1.0 / (adsr.decay * sample_rate);
+                    release_increment = 1.0 / (adsr.release * sample_rate);
+                }
                 if is_on.load(Ordering::Relaxed) {
                     match envelope_stage {
                         EnvelopeStage::Release(_) | EnvelopeStage::Idle => {
@@ -137,7 +147,11 @@ impl Audio {
             )
             .unwrap();
         _stream.play().unwrap();
-        Self { _stream, is_on }
+        Self {
+            _stream,
+            is_on,
+            adsr_tx,
+        }
     }
 }
 
@@ -145,6 +159,7 @@ pub fn execute_command(command: Command, audio: &Audio) {
     match command {
         Command::PlayNote => audio.is_on.store(true, Ordering::Relaxed),
         Command::StopNote => audio.is_on.store(false, Ordering::Relaxed),
+        Command::SetAdsr(adsr) => audio.adsr_tx.send(adsr).unwrap(),
         Command::None => (),
     }
 }
