@@ -11,11 +11,9 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 
+use crate::model::Adsr;
+
 const FREQ: f32 = 440.0;
-pub const ATTACK: f32 = 0.01;
-pub const DECAY: f32 = 0.1;
-pub const SUSTAIN: f32 = 0.7;
-pub const RELEASE: f32 = 0.3;
 
 pub enum EnvelopeStage {
     Attack(f32),
@@ -37,12 +35,12 @@ pub enum Command {
 }
 
 impl EnvelopeStage {
-    fn amplitude(&self) -> f32 {
+    fn amplitude(&self, sustain: f32) -> f32 {
         match self {
             Self::Attack(t) => *t,
-            Self::Decay(t) => 1.0 + *t * (SUSTAIN - 1.0),
-            Self::Sustain => SUSTAIN,
-            Self::Release(t) => (1.0 - *t) * SUSTAIN,
+            Self::Decay(t) => 1.0 + *t * (sustain - 1.0),
+            Self::Sustain => sustain,
+            Self::Release(t) => (1.0 - *t) * sustain,
             Self::Idle => 0.0,
         }
     }
@@ -66,16 +64,17 @@ impl Audio {
             let is_on = is_on.clone();
             let mut phase = 0.0;
             let mut envelope_stage = EnvelopeStage::Idle;
+            let adsr = Adsr::new();
             let sample_rate = config.sample_rate() as f32;
             let phase_increment = 1.0 / sample_rate;
-            let attack_increment = 1.0 / (ATTACK * sample_rate);
-            let decay_increment = 1.0 / (DECAY * sample_rate);
-            let release_increment = 1.0 / (RELEASE * sample_rate);
+            let attack_increment = 1.0 / (adsr.attack * sample_rate);
+            let decay_increment = 1.0 / (adsr.decay * sample_rate);
+            let release_increment = 1.0 / (adsr.release * sample_rate);
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 if is_on.load(Ordering::Relaxed) {
                     match envelope_stage {
                         EnvelopeStage::Release(_) | EnvelopeStage::Idle => {
-                            let t = envelope_stage.amplitude();
+                            let t = envelope_stage.amplitude(adsr.sustain);
                             envelope_stage = EnvelopeStage::Attack(t);
                         }
                         _ => (),
@@ -83,8 +82,9 @@ impl Audio {
                 } else {
                     match envelope_stage {
                         EnvelopeStage::Attack(_) | EnvelopeStage::Decay(_) => {
-                            let amplitude = envelope_stage.amplitude();
-                            let t = 1.0 - (amplitude / SUSTAIN);
+                            let amplitude =
+                                envelope_stage.amplitude(adsr.sustain);
+                            let t = 1.0 - (amplitude / adsr.sustain);
                             envelope_stage = EnvelopeStage::Release(t);
                         }
                         EnvelopeStage::Sustain => {
@@ -94,7 +94,7 @@ impl Audio {
                     };
                 }
                 for sample in data.iter_mut() {
-                    let envelope = envelope_stage.amplitude();
+                    let envelope = envelope_stage.amplitude(adsr.sustain);
                     *sample = (2.0 * PI * FREQ * phase).sin() * envelope;
                     phase = (phase + phase_increment) % 1.0;
                     envelope_stage = match envelope_stage {

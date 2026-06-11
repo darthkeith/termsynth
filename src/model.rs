@@ -1,4 +1,7 @@
-use crate::audio::{ATTACK, DECAY, RELEASE, SUSTAIN};
+const ATTACK: f32 = 0.01;
+const DECAY: f32 = 0.1;
+const SUSTAIN: f32 = 0.7;
+const RELEASE: f32 = 0.3;
 
 pub struct Adsr {
     pub attack: f32,
@@ -32,7 +35,7 @@ fn exp_adjust(val: f32, delta: f32) -> f32 {
 }
 
 impl Adsr {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             attack: ATTACK,
             decay: DECAY,
