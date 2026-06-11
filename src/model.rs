@@ -7,9 +7,18 @@ pub struct Adsr {
     pub release: f32,
 }
 
+#[derive(PartialEq)]
+pub enum Param {
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+}
+
 pub struct Model {
     pub is_on: bool,
     pub adsr: Adsr,
+    pub selected: Param,
 }
 
 impl Adsr {
@@ -28,6 +37,7 @@ impl Model {
         Self {
             is_on: false,
             adsr: Adsr::new(),
+            selected: Param::Attack,
         }
     }
 }

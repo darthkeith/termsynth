@@ -3,6 +3,10 @@ use std::io::Result;
 use crossterm::event::{self, KeyCode, KeyEventKind};
 
 pub enum Message {
+    SelectAttack,
+    SelectDecay,
+    SelectSustain,
+    SelectRelease,
     Toggle,
     Continue,
     Quit,
@@ -10,6 +14,10 @@ pub enum Message {
 
 fn key_to_message(key: KeyCode) -> Message {
     match key {
+        KeyCode::Char('a') => Message::SelectAttack,
+        KeyCode::Char('d') => Message::SelectDecay,
+        KeyCode::Char('s') => Message::SelectSustain,
+        KeyCode::Char('r') => Message::SelectRelease,
         KeyCode::Char(' ') => Message::Toggle,
         KeyCode::Char('q') => Message::Quit,
         _ => Message::Continue,

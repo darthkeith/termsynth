@@ -1,7 +1,15 @@
-use crate::{audio::Command, message::Message, model::Model};
+use crate::{
+    audio::Command,
+    message::Message,
+    model::{Model, Param},
+};
 
 pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
-    let result = match message {
+    match message {
+        Message::SelectAttack => model.selected = Param::Attack,
+        Message::SelectDecay => model.selected = Param::Decay,
+        Message::SelectSustain => model.selected = Param::Sustain,
+        Message::SelectRelease => model.selected = Param::Release,
         Message::Toggle => {
             model.is_on = !model.is_on;
             let command = if model.is_on {
@@ -9,10 +17,10 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
             } else {
                 Command::StopNote
             };
-            (model, command)
+            return Some((model, command));
         }
-        Message::Continue => (model, Command::None),
+        Message::Continue => (),
         Message::Quit => return None,
     };
-    Some(result)
+    Some((model, Command::None))
 }
