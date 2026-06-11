@@ -28,7 +28,7 @@ fn adjust(val: f32, delta: f32) -> f32 {
 fn exp_adjust(val: f32, delta: f32) -> f32 {
     let step = delta.abs();
     let log_val = (val.log10() / step).round() * step;
-    10f32.powf(log_val + delta)
+    10f32.powf(log_val + delta).clamp(0.0001, 10.0)
 }
 
 impl Adsr {
