@@ -12,7 +12,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 
-use crate::model::Adsr;
+use crate::model::{Adsr, Waveform};
 
 const FREQ: f32 = 440.0;
 
@@ -27,12 +27,14 @@ pub enum EnvelopeStage {
 pub struct Audio {
     _stream: Stream,
     is_on: Arc<AtomicBool>,
+    waveform_tx: mpsc::Sender<Waveform>,
     adsr_tx: mpsc::Sender<Adsr>,
 }
 
 pub enum Command {
     PlayNote,
     StopNote,
+    SetWaveform(Waveform),
     SetAdsr(Adsr),
     None,
 }
@@ -63,18 +65,23 @@ impl Audio {
             _ => panic!("unsupported sample format"),
         }
         let is_on = Arc::new(AtomicBool::new(false));
+        let (waveform_tx, waveform_rx) = mpsc::channel::<Waveform>();
         let (adsr_tx, adsr_rx) = mpsc::channel::<Adsr>();
         let write_sin = {
             let is_on = is_on.clone();
             let mut phase = 0.0;
             let mut envelope_stage = EnvelopeStage::Idle;
+            let mut waveform = Waveform::Sine;
             let mut adsr = Adsr::new();
             let sample_rate = config.sample_rate() as f32;
-            let phase_increment = 1.0 / sample_rate;
+            let phase_increment = FREQ / sample_rate;
             let mut attack_increment = 1.0 / (adsr.attack * sample_rate);
             let mut decay_increment = 1.0 / (adsr.decay * sample_rate);
             let mut release_increment = 1.0 / (adsr.release * sample_rate);
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                if let Ok(new_waveform) = waveform_rx.try_recv() {
+                    waveform = new_waveform;
+                }
                 if let Ok(new_adsr) = adsr_rx.try_recv() {
                     adsr = new_adsr;
                     attack_increment = 1.0 / (adsr.attack * sample_rate);
@@ -105,7 +112,20 @@ impl Audio {
                 }
                 for sample in data.iter_mut() {
                     let envelope = envelope_stage.amplitude(adsr.sustain);
-                    *sample = (2.0 * PI * FREQ * phase).sin() * envelope;
+                    *sample = match waveform {
+                        Waveform::Sine => (2.0 * PI * phase).sin() * envelope,
+                        Waveform::Square => {
+                            if phase < 0.5 {
+                                envelope
+                            } else {
+                                -envelope
+                            }
+                        }
+                        Waveform::Saw => (1.0 - 2.0 * phase) * envelope,
+                        Waveform::Triangle => {
+                            (4.0 * (phase - 0.5).abs() - 1.0) * envelope
+                        }
+                    };
                     phase = (phase + phase_increment) % 1.0;
                     envelope_stage = match envelope_stage {
                         EnvelopeStage::Attack(mut t) => {
@@ -150,6 +170,7 @@ impl Audio {
         Self {
             _stream,
             is_on,
+            waveform_tx,
             adsr_tx,
         }
     }
@@ -159,6 +180,9 @@ pub fn execute_command(command: Command, audio: &Audio) {
     match command {
         Command::PlayNote => audio.is_on.store(true, Ordering::Relaxed),
         Command::StopNote => audio.is_on.store(false, Ordering::Relaxed),
+        Command::SetWaveform(waveform) => {
+            audio.waveform_tx.send(waveform).unwrap()
+        }
         Command::SetAdsr(adsr) => audio.adsr_tx.send(adsr).unwrap(),
         Command::None => (),
     }

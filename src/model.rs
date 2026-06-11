@@ -3,6 +3,7 @@ const DECAY: f32 = 0.1;
 const SUSTAIN: f32 = 0.7;
 const RELEASE: f32 = 0.3;
 
+#[derive(Clone, Copy)]
 pub enum Waveform {
     Sine,
     Square,
@@ -34,7 +35,7 @@ pub struct Model {
 }
 
 impl Waveform {
-    pub fn name(&self) -> &str {
+    pub fn name(&self) -> &'static str {
         match self {
             Waveform::Sine => "Sine",
             Waveform::Square => "Square",
