@@ -12,6 +12,18 @@ use cpal::{
 };
 
 const FREQ: f32 = 440.0;
+const ATTACK: f32 = 0.01;
+const DECAY: f32 = 0.1;
+const SUSTAIN: f32 = 0.7;
+const RELEASE: f32 = 0.3;
+
+pub enum EnvelopeStage {
+    Attack(f32),
+    Decay(f32),
+    Sustain,
+    Release(f32),
+    Idle,
+}
 
 pub struct Audio {
     _stream: Stream,
@@ -22,6 +34,18 @@ pub enum Command {
     PlayNote,
     StopNote,
     None,
+}
+
+impl EnvelopeStage {
+    fn amplitude(&self) -> f32 {
+        match self {
+            Self::Attack(t) => *t,
+            Self::Decay(t) => 1.0 + *t * (SUSTAIN - 1.0),
+            Self::Sustain => SUSTAIN,
+            Self::Release(t) => (1.0 - *t) * SUSTAIN,
+            Self::Idle => 0.0,
+        }
+    }
 }
 
 impl Audio {
@@ -41,18 +65,65 @@ impl Audio {
         let write_sin = {
             let is_on = is_on.clone();
             let mut phase = 0.0;
+            let mut envelope_stage = EnvelopeStage::Idle;
             let sample_rate = config.sample_rate() as f32;
             let phase_increment = 1.0 / sample_rate;
+            let attack_increment = 1.0 / (ATTACK * sample_rate);
+            let decay_increment = 1.0 / (DECAY * sample_rate);
+            let release_increment = 1.0 / (RELEASE * sample_rate);
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 if is_on.load(Ordering::Relaxed) {
-                    for sample in data.iter_mut() {
-                        *sample = (2.0 * PI * FREQ * phase).sin();
-                        phase = (phase + phase_increment) % 1.0;
-                    }
+                    match envelope_stage {
+                        EnvelopeStage::Release(_) | EnvelopeStage::Idle => {
+                            let t = envelope_stage.amplitude();
+                            envelope_stage = EnvelopeStage::Attack(t);
+                        }
+                        _ => (),
+                    };
                 } else {
-                    phase = 0.0;
-                    for sample in data.iter_mut() {
-                        *sample = 0.0;
+                    match envelope_stage {
+                        EnvelopeStage::Attack(_) | EnvelopeStage::Decay(_) => {
+                            let amplitude = envelope_stage.amplitude();
+                            let t = 1.0 - (amplitude / SUSTAIN);
+                            envelope_stage = EnvelopeStage::Release(t);
+                        }
+                        EnvelopeStage::Sustain => {
+                            envelope_stage = EnvelopeStage::Release(0.0)
+                        }
+                        _ => (),
+                    };
+                }
+                for sample in data.iter_mut() {
+                    let envelope = envelope_stage.amplitude();
+                    *sample = (2.0 * PI * FREQ * phase).sin() * envelope;
+                    phase = (phase + phase_increment) % 1.0;
+                    envelope_stage = match envelope_stage {
+                        EnvelopeStage::Attack(mut t) => {
+                            t += attack_increment;
+                            if t < 1.0 {
+                                EnvelopeStage::Attack(t)
+                            } else {
+                                EnvelopeStage::Decay(0.0)
+                            }
+                        }
+                        EnvelopeStage::Decay(mut t) => {
+                            t += decay_increment;
+                            if t < 1.0 {
+                                EnvelopeStage::Decay(t)
+                            } else {
+                                EnvelopeStage::Sustain
+                            }
+                        }
+                        EnvelopeStage::Sustain => EnvelopeStage::Sustain,
+                        EnvelopeStage::Release(mut t) => {
+                            t += release_increment;
+                            if t < 1.0 {
+                                EnvelopeStage::Release(t)
+                            } else {
+                                EnvelopeStage::Idle
+                            }
+                        }
+                        EnvelopeStage::Idle => EnvelopeStage::Idle,
                     }
                 }
             }
