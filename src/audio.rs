@@ -12,10 +12,10 @@ use cpal::{
 };
 
 const FREQ: f32 = 440.0;
-const ATTACK: f32 = 0.01;
-const DECAY: f32 = 0.1;
-const SUSTAIN: f32 = 0.7;
-const RELEASE: f32 = 0.3;
+pub const ATTACK: f32 = 0.01;
+pub const DECAY: f32 = 0.1;
+pub const SUSTAIN: f32 = 0.7;
+pub const RELEASE: f32 = 0.3;
 
 pub enum EnvelopeStage {
     Attack(f32),
