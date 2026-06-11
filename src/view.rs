@@ -17,6 +17,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
     let mut lines = vec![
         Line::from("Press q to quit"),
         Line::from("Press Space to toggle note"),
+        Line::from(format!("Waveform: {}", model.waveform.name())),
         Line::from(format!(" Attack: {:.3} s", model.adsr.attack))
             .style(style(Param::Attack)),
         Line::from(format!("  Decay: {:.3} s", model.adsr.decay))

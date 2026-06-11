@@ -6,6 +6,7 @@ use crate::{
 
 pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
     match message {
+        Message::NextWaveform => model.waveform = model.waveform.next(),
         Message::SelectAttack => model.selected = Param::Attack,
         Message::SelectDecay => model.selected = Param::Decay,
         Message::SelectSustain => model.selected = Param::Sustain,

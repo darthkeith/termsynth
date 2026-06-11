@@ -3,6 +3,13 @@ const DECAY: f32 = 0.1;
 const SUSTAIN: f32 = 0.7;
 const RELEASE: f32 = 0.3;
 
+pub enum Waveform {
+    Sine,
+    Square,
+    Saw,
+    Triangle,
+}
+
 #[derive(Clone, Copy)]
 pub struct Adsr {
     pub attack: f32,
@@ -21,8 +28,29 @@ pub enum Param {
 
 pub struct Model {
     pub is_on: bool,
+    pub waveform: Waveform,
     pub adsr: Adsr,
     pub selected: Param,
+}
+
+impl Waveform {
+    pub fn name(&self) -> &str {
+        match self {
+            Waveform::Sine => "Sine",
+            Waveform::Square => "Square",
+            Waveform::Saw => "Saw",
+            Waveform::Triangle => "Triangle",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Waveform::Sine => Waveform::Square,
+            Waveform::Square => Waveform::Saw,
+            Waveform::Saw => Waveform::Triangle,
+            Waveform::Triangle => Waveform::Sine,
+        }
+    }
 }
 
 fn adjust(val: f32, delta: f32) -> f32 {
@@ -68,6 +96,7 @@ impl Model {
     pub fn new() -> Self {
         Self {
             is_on: false,
+            waveform: Waveform::Sine,
             adsr: Adsr::new(),
             selected: Param::Attack,
         }
