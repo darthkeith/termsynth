@@ -29,6 +29,7 @@ pub struct AudioProcessor {
     adsr: Adsr,
     envelope_stage: EnvelopeStage,
     phase: f32,
+    channels: usize,
     sample_rate: f32,
     phase_increment: f32,
     attack_increment: f32,
@@ -68,6 +69,7 @@ impl EnvelopeStage {
 
 impl AudioProcessor {
     fn new(
+        channels: usize,
         sample_rate: f32,
         is_on: Arc<AtomicBool>,
         waveform_rx: mpsc::Receiver<Waveform>,
@@ -79,6 +81,7 @@ impl AudioProcessor {
             adsr,
             envelope_stage: EnvelopeStage::Idle,
             phase: 0.0,
+            channels,
             sample_rate,
             phase_increment: FREQ / sample_rate,
             attack_increment: 1.0 / (adsr.attack * sample_rate),
@@ -123,9 +126,9 @@ impl AudioProcessor {
                 _ => (),
             };
         }
-        for sample in data.iter_mut() {
+        for frame in data.chunks_mut(self.channels) {
             let envelope = self.envelope_stage.amplitude(self.adsr.sustain);
-            *sample = match self.waveform {
+            let value = match self.waveform {
                 Waveform::Sine => (2.0 * PI * self.phase).sin() * envelope,
                 Waveform::Square => {
                     if self.phase < 0.5 {
@@ -139,6 +142,9 @@ impl AudioProcessor {
                     (4.0 * (self.phase - 0.5).abs() - 1.0) * envelope
                 }
             };
+            for sample in frame.iter_mut() {
+                *sample = value;
+            }
             self.phase = (self.phase + self.phase_increment) % 1.0;
             self.envelope_stage = match self.envelope_stage {
                 EnvelopeStage::Attack(mut t) => {
@@ -189,6 +195,7 @@ impl Audio {
         let (waveform_tx, waveform_rx) = mpsc::channel::<Waveform>();
         let (adsr_tx, adsr_rx) = mpsc::channel::<Adsr>();
         let mut processor = AudioProcessor::new(
+            config.channels() as usize,
             config.sample_rate() as f32,
             is_on.clone(),
             waveform_rx,
