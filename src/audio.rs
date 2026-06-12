@@ -93,7 +93,7 @@ impl AudioProcessor {
         }
     }
 
-    fn process(&mut self, data: &mut [f32]) {
+    fn receive_param_updates(&mut self) {
         if let Ok(new_waveform) = self.waveform_rx.try_recv() {
             self.waveform = new_waveform;
         }
@@ -104,6 +104,9 @@ impl AudioProcessor {
             self.release_increment =
                 1.0 / (self.adsr.release * self.sample_rate);
         }
+    }
+
+    fn update_envelope_on_signal(&mut self) {
         if self.is_on.load(Ordering::Relaxed) {
             match self.envelope_stage {
                 EnvelopeStage::Release(_) | EnvelopeStage::Idle => {
@@ -126,54 +129,67 @@ impl AudioProcessor {
                 _ => (),
             };
         }
+    }
+
+    fn generate_sample(&self) -> f32 {
+        let envelope = self.envelope_stage.amplitude(self.adsr.sustain);
+        match self.waveform {
+            Waveform::Sine => (2.0 * PI * self.phase).sin() * envelope,
+            Waveform::Square => {
+                if self.phase < 0.5 {
+                    envelope
+                } else {
+                    -envelope
+                }
+            }
+            Waveform::Saw => (1.0 - 2.0 * self.phase) * envelope,
+            Waveform::Triangle => {
+                (4.0 * (self.phase - 0.5).abs() - 1.0) * envelope
+            }
+        }
+    }
+
+    fn increment_envelope(&mut self) {
+        self.envelope_stage = match self.envelope_stage {
+            EnvelopeStage::Attack(mut t) => {
+                t += self.attack_increment;
+                if t < 1.0 {
+                    EnvelopeStage::Attack(t)
+                } else {
+                    EnvelopeStage::Decay(0.0)
+                }
+            }
+            EnvelopeStage::Decay(mut t) => {
+                t += self.decay_increment;
+                if t < 1.0 {
+                    EnvelopeStage::Decay(t)
+                } else {
+                    EnvelopeStage::Sustain
+                }
+            }
+            EnvelopeStage::Sustain => EnvelopeStage::Sustain,
+            EnvelopeStage::Release(mut t) => {
+                t += self.release_increment;
+                if t < 1.0 {
+                    EnvelopeStage::Release(t)
+                } else {
+                    EnvelopeStage::Idle
+                }
+            }
+            EnvelopeStage::Idle => EnvelopeStage::Idle,
+        }
+    }
+
+    fn process(&mut self, data: &mut [f32]) {
+        self.receive_param_updates();
+        self.update_envelope_on_signal();
         for frame in data.chunks_mut(self.channels) {
-            let envelope = self.envelope_stage.amplitude(self.adsr.sustain);
-            let value = match self.waveform {
-                Waveform::Sine => (2.0 * PI * self.phase).sin() * envelope,
-                Waveform::Square => {
-                    if self.phase < 0.5 {
-                        envelope
-                    } else {
-                        -envelope
-                    }
-                }
-                Waveform::Saw => (1.0 - 2.0 * self.phase) * envelope,
-                Waveform::Triangle => {
-                    (4.0 * (self.phase - 0.5).abs() - 1.0) * envelope
-                }
-            };
+            let value = self.generate_sample();
             for sample in frame.iter_mut() {
                 *sample = value;
             }
             self.phase = (self.phase + self.phase_increment) % 1.0;
-            self.envelope_stage = match self.envelope_stage {
-                EnvelopeStage::Attack(mut t) => {
-                    t += self.attack_increment;
-                    if t < 1.0 {
-                        EnvelopeStage::Attack(t)
-                    } else {
-                        EnvelopeStage::Decay(0.0)
-                    }
-                }
-                EnvelopeStage::Decay(mut t) => {
-                    t += self.decay_increment;
-                    if t < 1.0 {
-                        EnvelopeStage::Decay(t)
-                    } else {
-                        EnvelopeStage::Sustain
-                    }
-                }
-                EnvelopeStage::Sustain => EnvelopeStage::Sustain,
-                EnvelopeStage::Release(mut t) => {
-                    t += self.release_increment;
-                    if t < 1.0 {
-                        EnvelopeStage::Release(t)
-                    } else {
-                        EnvelopeStage::Idle
-                    }
-                }
-                EnvelopeStage::Idle => EnvelopeStage::Idle,
-            }
+            self.increment_envelope();
         }
     }
 }
