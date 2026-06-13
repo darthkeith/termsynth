@@ -12,7 +12,7 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 
-use crate::model::{Adsr, Waveform};
+use crate::model::{Adsr, DEFAULT_CUTOFF, Waveform};
 
 const FREQ: f32 = 440.0;
 
@@ -26,6 +26,7 @@ pub enum EnvelopeStage {
 
 pub struct AudioProcessor {
     waveform: Waveform,
+    cutoff: f32,
     adsr: Adsr,
     envelope_stage: EnvelopeStage,
     phase: f32,
@@ -37,6 +38,7 @@ pub struct AudioProcessor {
     release_increment: f32,
     is_on: Arc<AtomicBool>,
     waveform_rx: mpsc::Receiver<Waveform>,
+    cutoff_rx: mpsc::Receiver<f32>,
     adsr_rx: mpsc::Receiver<Adsr>,
 }
 
@@ -44,6 +46,7 @@ pub struct Audio {
     _stream: Stream,
     is_on: Arc<AtomicBool>,
     waveform_tx: mpsc::Sender<Waveform>,
+    cutoff_tx: mpsc::Sender<f32>,
     adsr_tx: mpsc::Sender<Adsr>,
 }
 
@@ -51,6 +54,7 @@ pub enum Command {
     PlayNote,
     StopNote,
     SetWaveform(Waveform),
+    SetCutoff(f32),
     SetAdsr(Adsr),
     None,
 }
@@ -73,11 +77,13 @@ impl AudioProcessor {
         sample_rate: f32,
         is_on: Arc<AtomicBool>,
         waveform_rx: mpsc::Receiver<Waveform>,
+        cutoff_rx: mpsc::Receiver<f32>,
         adsr_rx: mpsc::Receiver<Adsr>,
     ) -> Self {
         let adsr = Adsr::new();
         Self {
             waveform: Waveform::Sine,
+            cutoff: DEFAULT_CUTOFF,
             adsr,
             envelope_stage: EnvelopeStage::Idle,
             phase: 0.0,
@@ -89,6 +95,7 @@ impl AudioProcessor {
             release_increment: 1.0 / (adsr.release * sample_rate),
             is_on,
             waveform_rx,
+            cutoff_rx,
             adsr_rx,
         }
     }
@@ -96,6 +103,9 @@ impl AudioProcessor {
     fn receive_param_updates(&mut self) {
         if let Ok(new_waveform) = self.waveform_rx.try_recv() {
             self.waveform = new_waveform;
+        }
+        if let Ok(new_cutoff) = self.cutoff_rx.try_recv() {
+            self.cutoff = new_cutoff;
         }
         if let Ok(new_adsr) = self.adsr_rx.try_recv() {
             self.adsr = new_adsr;
@@ -209,12 +219,14 @@ impl Audio {
         }
         let is_on = Arc::new(AtomicBool::new(false));
         let (waveform_tx, waveform_rx) = mpsc::channel::<Waveform>();
+        let (cutoff_tx, cutoff_rx) = mpsc::channel::<f32>();
         let (adsr_tx, adsr_rx) = mpsc::channel::<Adsr>();
         let mut processor = AudioProcessor::new(
             config.channels() as usize,
             config.sample_rate() as f32,
             is_on.clone(),
             waveform_rx,
+            cutoff_rx,
             adsr_rx,
         );
         let _stream = device
@@ -230,6 +242,7 @@ impl Audio {
             _stream,
             is_on,
             waveform_tx,
+            cutoff_tx,
             adsr_tx,
         }
     }
@@ -239,6 +252,7 @@ pub fn execute_command(command: Command, audio: &Audio) {
     match command {
         Command::PlayNote => audio.is_on.store(true, Ordering::Relaxed),
         Command::StopNote => audio.is_on.store(false, Ordering::Relaxed),
+        Command::SetCutoff(cutoff) => audio.cutoff_tx.send(cutoff).unwrap(),
         Command::SetWaveform(waveform) => {
             audio.waveform_tx.send(waveform).unwrap()
         }

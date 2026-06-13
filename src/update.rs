@@ -19,7 +19,7 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
         Message::Increment => {
             model.increment();
             let command = match model.selected {
-                Param::Cutoff => Command::None,
+                Param::Cutoff => Command::SetCutoff(model.cutoff),
                 _ => Command::SetAdsr(model.adsr),
             };
             return Some((model, command));
@@ -27,7 +27,7 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
         Message::Decrement => {
             model.decrement();
             let command = match model.selected {
-                Param::Cutoff => Command::None,
+                Param::Cutoff => Command::SetCutoff(model.cutoff),
                 _ => Command::SetAdsr(model.adsr),
             };
             return Some((model, command));

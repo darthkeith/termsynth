@@ -1,4 +1,4 @@
-const DEFAULT_CUTOFF: f32 = 8000.0;
+pub const DEFAULT_CUTOFF: f32 = 8000.0;
 const DEFAULT_ATTACK: f32 = 0.01;
 const DEFAULT_DECAY: f32 = 0.1;
 const DEFAULT_SUSTAIN: f32 = 0.7;
