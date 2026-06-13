@@ -26,7 +26,7 @@ pub enum EnvelopeStage {
 
 pub struct AudioProcessor {
     waveform: Waveform,
-    cutoff: f32,
+    alpha: f32,
     adsr: Adsr,
     envelope_stage: EnvelopeStage,
     phase: f32,
@@ -71,6 +71,10 @@ impl EnvelopeStage {
     }
 }
 
+fn cutoff_to_alpha(cutoff: f32, sample_rate: f32) -> f32 {
+    1.0 - (-2.0 * PI * cutoff / sample_rate).exp()
+}
+
 impl AudioProcessor {
     fn new(
         channels: usize,
@@ -80,10 +84,11 @@ impl AudioProcessor {
         cutoff_rx: mpsc::Receiver<f32>,
         adsr_rx: mpsc::Receiver<Adsr>,
     ) -> Self {
+        let alpha = cutoff_to_alpha(DEFAULT_CUTOFF, sample_rate);
         let adsr = Adsr::new();
         Self {
             waveform: Waveform::Sine,
-            cutoff: DEFAULT_CUTOFF,
+            alpha,
             adsr,
             envelope_stage: EnvelopeStage::Idle,
             phase: 0.0,
@@ -104,8 +109,8 @@ impl AudioProcessor {
         if let Ok(new_waveform) = self.waveform_rx.try_recv() {
             self.waveform = new_waveform;
         }
-        if let Ok(new_cutoff) = self.cutoff_rx.try_recv() {
-            self.cutoff = new_cutoff;
+        if let Ok(cutoff) = self.cutoff_rx.try_recv() {
+            self.alpha = cutoff_to_alpha(cutoff, self.sample_rate);
         }
         if let Ok(new_adsr) = self.adsr_rx.try_recv() {
             self.adsr = new_adsr;
