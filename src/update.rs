@@ -16,16 +16,8 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
         Message::SelectDecay => model.selected = Param::Decay,
         Message::SelectSustain => model.selected = Param::Sustain,
         Message::SelectRelease => model.selected = Param::Release,
-        Message::Increment => {
-            model.increment();
-            let command = match model.selected {
-                Param::Cutoff => Command::SetCutoff(model.cutoff),
-                _ => Command::SetAdsr(model.adsr),
-            };
-            return Some((model, command));
-        }
-        Message::Decrement => {
-            model.decrement();
+        Message::Adjust(adjust) => {
+            model.adjust(adjust);
             let command = match model.selected {
                 Param::Cutoff => Command::SetCutoff(model.cutoff),
                 _ => Command::SetAdsr(model.adsr),

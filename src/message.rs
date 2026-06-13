@@ -2,6 +2,8 @@ use std::io::Result;
 
 use crossterm::event::{self, KeyCode, KeyEventKind};
 
+use crate::model::Adjust;
+
 pub enum Message {
     NextWaveform,
     SelectCutoff,
@@ -9,8 +11,7 @@ pub enum Message {
     SelectDecay,
     SelectSustain,
     SelectRelease,
-    Increment,
-    Decrement,
+    Adjust(Adjust),
     Toggle,
     Continue,
     Quit,
@@ -24,8 +25,8 @@ fn key_to_message(key: KeyCode) -> Message {
         KeyCode::Char('d') => Message::SelectDecay,
         KeyCode::Char('s') => Message::SelectSustain,
         KeyCode::Char('r') => Message::SelectRelease,
-        KeyCode::Char('k') => Message::Increment,
-        KeyCode::Char('j') => Message::Decrement,
+        KeyCode::Char('k') => Message::Adjust(Adjust::Increase),
+        KeyCode::Char('j') => Message::Adjust(Adjust::Decrease),
         KeyCode::Char(' ') => Message::Toggle,
         KeyCode::Char('q') => Message::Quit,
         _ => Message::Continue,

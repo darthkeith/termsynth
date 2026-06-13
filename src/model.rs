@@ -33,6 +33,11 @@ pub enum Param {
     Release,
 }
 
+pub enum Adjust {
+    Increase,
+    Decrease,
+}
+
 pub struct Model {
     pub is_on: bool,
     pub waveform: Waveform,
@@ -61,7 +66,7 @@ impl Waveform {
     }
 }
 
-fn adjust(val: f32, delta: f32) -> f32 {
+fn linear_adjust(val: f32, delta: f32) -> f32 {
     (val + delta).clamp(0.0, 1.0)
 }
 
@@ -101,40 +106,30 @@ impl Model {
         }
     }
 
-    pub fn increment(&mut self) {
-        match self.selected {
-            Param::Cutoff => self.cutoff = exp_adjust_cutoff(self.cutoff, 0.01),
-            Param::Attack => {
-                self.adsr.attack = exp_adjust_env_time(self.adsr.attack, 0.1)
-            }
-            Param::Decay => {
-                self.adsr.decay = exp_adjust_env_time(self.adsr.decay, 0.1)
-            }
-            Param::Sustain => {
-                self.adsr.sustain = adjust(self.adsr.sustain, 0.01)
-            }
-            Param::Release => {
-                self.adsr.release = exp_adjust_env_time(self.adsr.release, 0.1)
-            }
-        }
-    }
-
-    pub fn decrement(&mut self) {
+    pub fn adjust(&mut self, adj: Adjust) {
+        let sign = match adj {
+            Adjust::Increase => 1.0,
+            Adjust::Decrease => -1.0,
+        };
         match self.selected {
             Param::Cutoff => {
-                self.cutoff = exp_adjust_cutoff(self.cutoff, -0.01)
+                self.cutoff = exp_adjust_cutoff(self.cutoff, 0.01 * sign)
             }
             Param::Attack => {
-                self.adsr.attack = exp_adjust_env_time(self.adsr.attack, -0.1)
+                self.adsr.attack =
+                    exp_adjust_env_time(self.adsr.attack, 0.1 * sign)
             }
             Param::Decay => {
-                self.adsr.decay = exp_adjust_env_time(self.adsr.decay, -0.1)
+                self.adsr.decay =
+                    exp_adjust_env_time(self.adsr.decay, 0.1 * sign)
             }
             Param::Sustain => {
-                self.adsr.sustain = adjust(self.adsr.sustain, -0.01)
+                self.adsr.sustain =
+                    linear_adjust(self.adsr.sustain, 0.01 * sign)
             }
             Param::Release => {
-                self.adsr.release = exp_adjust_env_time(self.adsr.release, -0.1)
+                self.adsr.release =
+                    exp_adjust_env_time(self.adsr.release, 0.1 * sign)
             }
         }
     }
