@@ -16,7 +16,7 @@ use crate::model::{Adsr, DEFAULT_CUTOFF, Waveform};
 
 const FREQ: f32 = 440.0;
 
-pub enum EnvelopeStage {
+enum EnvelopeStage {
     Attack(f32),
     Decay(f32),
     Sustain,
@@ -24,7 +24,16 @@ pub enum EnvelopeStage {
     Idle,
 }
 
-pub struct AudioProcessor {
+enum ParamUpdate {
+    Waveform(Waveform),
+    Cutoff(f32),
+    Attack(f32),
+    Decay(f32),
+    Sustain(f32),
+    Release(f32),
+}
+
+struct AudioProcessor {
     waveform: Waveform,
     alpha: f32,
     adsr: Adsr,
@@ -38,17 +47,13 @@ pub struct AudioProcessor {
     release_increment: f32,
     prev_output: f32,
     is_on: Arc<AtomicBool>,
-    waveform_rx: mpsc::Receiver<Waveform>,
-    cutoff_rx: mpsc::Receiver<f32>,
-    adsr_rx: mpsc::Receiver<Adsr>,
+    param_rx: mpsc::Receiver<ParamUpdate>,
 }
 
 pub struct Audio {
     _stream: Stream,
     is_on: Arc<AtomicBool>,
-    waveform_tx: mpsc::Sender<Waveform>,
-    cutoff_tx: mpsc::Sender<f32>,
-    adsr_tx: mpsc::Sender<Adsr>,
+    param_tx: mpsc::Sender<ParamUpdate>,
 }
 
 pub enum Command {
@@ -56,7 +61,10 @@ pub enum Command {
     StopNote,
     SetWaveform(Waveform),
     SetCutoff(f32),
-    SetAdsr(Adsr),
+    SetAttack(f32),
+    SetDecay(f32),
+    SetSustain(f32),
+    SetRelease(f32),
     None,
 }
 
@@ -81,9 +89,7 @@ impl AudioProcessor {
         channels: usize,
         sample_rate: f32,
         is_on: Arc<AtomicBool>,
-        waveform_rx: mpsc::Receiver<Waveform>,
-        cutoff_rx: mpsc::Receiver<f32>,
-        adsr_rx: mpsc::Receiver<Adsr>,
+        param_rx: mpsc::Receiver<ParamUpdate>,
     ) -> Self {
         let alpha = cutoff_to_alpha(DEFAULT_CUTOFF, sample_rate);
         let adsr = Adsr::new();
@@ -101,25 +107,31 @@ impl AudioProcessor {
             release_increment: 1.0 / (adsr.release * sample_rate),
             prev_output: 0.0,
             is_on,
-            waveform_rx,
-            cutoff_rx,
-            adsr_rx,
+            param_rx,
         }
     }
 
     fn receive_param_updates(&mut self) {
-        if let Ok(new_waveform) = self.waveform_rx.try_recv() {
-            self.waveform = new_waveform;
-        }
-        if let Ok(cutoff) = self.cutoff_rx.try_recv() {
-            self.alpha = cutoff_to_alpha(cutoff, self.sample_rate);
-        }
-        if let Ok(new_adsr) = self.adsr_rx.try_recv() {
-            self.adsr = new_adsr;
-            self.attack_increment = 1.0 / (self.adsr.attack * self.sample_rate);
-            self.decay_increment = 1.0 / (self.adsr.decay * self.sample_rate);
-            self.release_increment =
-                1.0 / (self.adsr.release * self.sample_rate);
+        while let Ok(update) = self.param_rx.try_recv() {
+            match update {
+                ParamUpdate::Waveform(waveform) => self.waveform = waveform,
+                ParamUpdate::Cutoff(cutoff) => {
+                    self.alpha = cutoff_to_alpha(cutoff, self.sample_rate);
+                }
+                ParamUpdate::Attack(attack) => {
+                    self.attack_increment = 1.0 / (attack * self.sample_rate);
+                    self.adsr.attack = attack;
+                }
+                ParamUpdate::Decay(decay) => {
+                    self.decay_increment = 1.0 / (decay * self.sample_rate);
+                    self.adsr.decay = decay;
+                }
+                ParamUpdate::Sustain(sustain) => self.adsr.sustain = sustain,
+                ParamUpdate::Release(release) => {
+                    self.release_increment = 1.0 / (release * self.sample_rate);
+                    self.adsr.release = release;
+                }
+            }
         }
     }
 
@@ -228,16 +240,12 @@ impl Audio {
             _ => panic!("unsupported sample format"),
         }
         let is_on = Arc::new(AtomicBool::new(false));
-        let (waveform_tx, waveform_rx) = mpsc::channel::<Waveform>();
-        let (cutoff_tx, cutoff_rx) = mpsc::channel::<f32>();
-        let (adsr_tx, adsr_rx) = mpsc::channel::<Adsr>();
+        let (param_tx, param_rx) = mpsc::channel::<ParamUpdate>();
         let mut processor = AudioProcessor::new(
             config.channels() as usize,
             config.sample_rate() as f32,
             is_on.clone(),
-            waveform_rx,
-            cutoff_rx,
-            adsr_rx,
+            param_rx,
         );
         let _stream = device
             .build_output_stream(
@@ -251,9 +259,7 @@ impl Audio {
         Self {
             _stream,
             is_on,
-            waveform_tx,
-            cutoff_tx,
-            adsr_tx,
+            param_tx,
         }
     }
 }
@@ -262,11 +268,27 @@ pub fn execute_command(command: Command, audio: &Audio) {
     match command {
         Command::PlayNote => audio.is_on.store(true, Ordering::Relaxed),
         Command::StopNote => audio.is_on.store(false, Ordering::Relaxed),
-        Command::SetCutoff(cutoff) => audio.cutoff_tx.send(cutoff).unwrap(),
         Command::SetWaveform(waveform) => {
-            audio.waveform_tx.send(waveform).unwrap()
+            audio
+                .param_tx
+                .send(ParamUpdate::Waveform(waveform))
+                .unwrap();
         }
-        Command::SetAdsr(adsr) => audio.adsr_tx.send(adsr).unwrap(),
+        Command::SetCutoff(cutoff) => {
+            audio.param_tx.send(ParamUpdate::Cutoff(cutoff)).unwrap();
+        }
+        Command::SetAttack(attack) => {
+            audio.param_tx.send(ParamUpdate::Attack(attack)).unwrap();
+        }
+        Command::SetDecay(decay) => {
+            audio.param_tx.send(ParamUpdate::Decay(decay)).unwrap();
+        }
+        Command::SetSustain(sustain) => {
+            audio.param_tx.send(ParamUpdate::Sustain(sustain)).unwrap();
+        }
+        Command::SetRelease(release) => {
+            audio.param_tx.send(ParamUpdate::Release(release)).unwrap();
+        }
         Command::None => (),
     }
 }

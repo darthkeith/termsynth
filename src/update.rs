@@ -20,7 +20,10 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
             model.adjust(adjust);
             let command = match model.selected {
                 Param::Cutoff => Command::SetCutoff(model.cutoff),
-                _ => Command::SetAdsr(model.adsr),
+                Param::Attack => Command::SetAttack(model.adsr.attack),
+                Param::Decay => Command::SetDecay(model.adsr.decay),
+                Param::Sustain => Command::SetSustain(model.adsr.sustain),
+                Param::Release => Command::SetRelease(model.adsr.release),
             };
             return Some((model, command));
         }
