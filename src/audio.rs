@@ -36,6 +36,7 @@ pub struct AudioProcessor {
     attack_increment: f32,
     decay_increment: f32,
     release_increment: f32,
+    prev_output: f32,
     is_on: Arc<AtomicBool>,
     waveform_rx: mpsc::Receiver<Waveform>,
     cutoff_rx: mpsc::Receiver<f32>,
@@ -98,6 +99,7 @@ impl AudioProcessor {
             attack_increment: 1.0 / (adsr.attack * sample_rate),
             decay_increment: 1.0 / (adsr.decay * sample_rate),
             release_increment: 1.0 / (adsr.release * sample_rate),
+            prev_output: 0.0,
             is_on,
             waveform_rx,
             cutoff_rx,
@@ -147,21 +149,23 @@ impl AudioProcessor {
     }
 
     fn generate_sample(&self) -> f32 {
-        let envelope = self.envelope_stage.amplitude(self.adsr.sustain);
         match self.waveform {
-            Waveform::Sine => (2.0 * PI * self.phase).sin() * envelope,
+            Waveform::Sine => (2.0 * PI * self.phase).sin(),
             Waveform::Square => {
                 if self.phase < 0.5 {
-                    envelope
+                    1.0
                 } else {
-                    -envelope
+                    -1.0
                 }
             }
-            Waveform::Saw => (1.0 - 2.0 * self.phase) * envelope,
-            Waveform::Triangle => {
-                (4.0 * (self.phase - 0.5).abs() - 1.0) * envelope
-            }
+            Waveform::Saw => 1.0 - 2.0 * self.phase,
+            Waveform::Triangle => 4.0 * (self.phase - 0.5).abs() - 1.0,
         }
+    }
+
+    fn apply_filter(&mut self, input: f32) -> f32 {
+        self.prev_output += self.alpha * (input - self.prev_output);
+        self.prev_output
     }
 
     fn increment_envelope(&mut self) {
@@ -199,7 +203,8 @@ impl AudioProcessor {
         self.receive_param_updates();
         self.update_envelope_on_signal();
         for frame in data.chunks_mut(self.channels) {
-            let value = self.generate_sample();
+            let envelope = self.envelope_stage.amplitude(self.adsr.sustain);
+            let value = self.apply_filter(self.generate_sample()) * envelope;
             for sample in frame.iter_mut() {
                 *sample = value;
             }
