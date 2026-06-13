@@ -18,6 +18,8 @@ pub fn view(model: &Model, frame: &mut Frame) {
         Line::from("Press q to quit"),
         Line::from("Press Space to toggle note"),
         Line::from(format!("Waveform: {}", model.waveform.name())),
+        Line::from(format!(" Cutoff: {:.0} Hz", model.cutoff))
+            .style(style(Param::Cutoff)),
         Line::from(format!(" Attack: {:.3} s", model.adsr.attack))
             .style(style(Param::Attack)),
         Line::from(format!("  Decay: {:.3} s", model.adsr.decay))
