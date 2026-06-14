@@ -23,13 +23,19 @@ fn run(terminal: &mut DefaultTerminal) -> Result<()> {
     let audio = Audio::new();
     loop {
         terminal.draw(|frame| view(&model, frame))?;
-        let message = message_rx.recv().unwrap();
-        let command;
-        (model, command) = match update(model, message) {
-            Some(result) => result,
-            None => return Ok(()),
-        };
-        execute_command(command, &audio);
+        let mut message = message_rx.recv().expect("input thread disconnected");
+        loop {
+            let command;
+            (model, command) = match update(model, message) {
+                Some(result) => result,
+                None => return Ok(()),
+            };
+            execute_command(command, &audio);
+            match message_rx.try_recv() {
+                Ok(next_msg) => message = next_msg,
+                Err(_) => break,
+            }
+        }
     }
 }
 
