@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use crossterm::event::{self, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 
 use crate::model::Adjust;
 
@@ -13,12 +13,12 @@ pub enum Message {
     SelectRelease,
     Adjust(Adjust),
     Toggle,
-    Continue,
     Quit,
+    Continue,
 }
 
-fn key_to_message(key: KeyCode) -> Message {
-    match key {
+fn key_to_message(key: KeyCode) -> Option<Message> {
+    let msg = match key {
         KeyCode::Char('w') => Message::NextWaveform,
         KeyCode::Char('c') => Message::SelectCutoff,
         KeyCode::Char('a') => Message::SelectAttack,
@@ -29,16 +29,26 @@ fn key_to_message(key: KeyCode) -> Message {
         KeyCode::Char('j') => Message::Adjust(Adjust::Decrease),
         KeyCode::Char(' ') => Message::Toggle,
         KeyCode::Char('q') => Message::Quit,
-        _ => Message::Continue,
-    }
+        _ => return None,
+    };
+    Some(msg)
 }
 
 pub fn handle_input(message_tx: &mpsc::Sender<Message>) -> bool {
-    let Ok(event::Event::Key(key)) = event::read() else {
-        return message_tx.send(Message::Continue).is_ok();
+    let Ok(event) = event::read() else {
+        return false;
     };
-    if key.kind != KeyEventKind::Press {
-        return true;
+    match event {
+        Event::Key(key) => {
+            if key.kind != KeyEventKind::Press {
+                return true;
+            }
+            match key_to_message(key.code) {
+                Some(msg) => message_tx.send(msg).is_ok(),
+                None => true,
+            }
+        }
+        Event::Resize(..) => message_tx.send(Message::Continue).is_ok(),
+        _ => true,
     }
-    message_tx.send(key_to_message(key.code)).is_ok()
 }
