@@ -1,4 +1,4 @@
-use std::io::Result;
+use std::sync::mpsc;
 
 use crossterm::event::{self, KeyCode, KeyEventKind};
 
@@ -33,12 +33,12 @@ fn key_to_message(key: KeyCode) -> Message {
     }
 }
 
-pub fn handle_input() -> Result<Message> {
-    let event::Event::Key(key) = event::read()? else {
-        return Ok(Message::Continue);
+pub fn handle_input(message_tx: &mpsc::Sender<Message>) -> bool {
+    let Ok(event::Event::Key(key)) = event::read() else {
+        return message_tx.send(Message::Continue).is_ok();
     };
     if key.kind != KeyEventKind::Press {
-        return Ok(Message::Continue);
+        return true;
     }
-    Ok(key_to_message(key.code))
+    message_tx.send(key_to_message(key.code)).is_ok()
 }
