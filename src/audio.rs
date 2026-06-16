@@ -12,7 +12,10 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 
-use crate::model::{Adsr, DEFAULT_CUTOFF, Waveform};
+use crate::{
+    midi::Midi,
+    model::{Adsr, DEFAULT_CUTOFF, Waveform},
+};
 
 const FREQ: f32 = 440.0;
 
@@ -65,6 +68,7 @@ pub enum Command {
     SetDecay(f32),
     SetSustain(f32),
     SetRelease(f32),
+    NextPort,
     None,
 }
 
@@ -264,7 +268,7 @@ impl Audio {
     }
 }
 
-pub fn execute_command(command: Command, audio: &Audio) {
+pub fn execute_command(command: Command, audio: &Audio, midi: &mut Midi) {
     match command {
         Command::PlayNote => audio.is_on.store(true, Ordering::Relaxed),
         Command::StopNote => audio.is_on.store(false, Ordering::Relaxed),
@@ -288,6 +292,10 @@ pub fn execute_command(command: Command, audio: &Audio) {
         }
         Command::SetRelease(release) => {
             audio.param_tx.send(ParamUpdate::Release(release)).unwrap();
+        }
+        Command::NextPort => {
+            midi.next_port();
+            midi.connect().unwrap();
         }
         Command::None => (),
     }

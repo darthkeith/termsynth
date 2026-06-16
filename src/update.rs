@@ -6,6 +6,9 @@ use crate::{
 
 pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
     match message {
+        Message::Midi { timestamp, bytes } => {
+            model.last_midi = Some((timestamp, bytes));
+        }
         Message::NextWaveform => {
             model.waveform = model.waveform.next();
             let waveform = model.waveform;
@@ -36,8 +39,12 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
             };
             return Some((model, command));
         }
-        Message::Continue => (),
         Message::Quit => return None,
+        Message::NextPort => {
+            return Some((model, Command::NextPort));
+        }
+        Message::SetPortName(port_name) => model.port_name = Some(port_name),
+        Message::Continue => (),
     };
     Some((model, Command::None))
 }

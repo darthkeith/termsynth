@@ -44,6 +44,8 @@ pub struct Model {
     pub cutoff: f32,
     pub adsr: Adsr,
     pub selected: Param,
+    pub port_name: Option<String>,
+    pub last_midi: Option<(u64, Vec<u8>)>,
 }
 
 impl Waveform {
@@ -103,6 +105,8 @@ impl Model {
             cutoff: DEFAULT_CUTOFF,
             adsr: Adsr::new(),
             selected: Param::Attack,
+            port_name: None,
+            last_midi: None,
         }
     }
 

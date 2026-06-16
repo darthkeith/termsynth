@@ -14,6 +14,16 @@ pub fn view(model: &Model, frame: &mut Frame) {
             Style::new()
         }
     };
+    let midi_port_name = match &model.port_name {
+        Some(name) => &name,
+        None => "None",
+    };
+    let midi_text = match &model.last_midi {
+        Some((timestamp, bytes)) => {
+            format!("Timestamp: {timestamp}, Bytes: {bytes:?}")
+        }
+        None => "None".to_string(),
+    };
     let mut lines = vec![
         Line::from("Press q to quit"),
         Line::from("Press Space to toggle note"),
@@ -28,6 +38,8 @@ pub fn view(model: &Model, frame: &mut Frame) {
             .style(style(Param::Sustain)),
         Line::from(format!("Release: {:.3} s", model.adsr.release))
             .style(style(Param::Release)),
+        Line::from(format!("Midi Input: {midi_port_name}")),
+        Line::from(format!("Last MIDI: {midi_text}")),
     ];
     if model.is_on {
         lines.push(Line::from("Note playing..."));

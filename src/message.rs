@@ -5,6 +5,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crate::model::Adjust;
 
 pub enum Message {
+    Midi { timestamp: u64, bytes: Vec<u8> },
     NextWaveform,
     SelectCutoff,
     SelectAttack,
@@ -14,6 +15,8 @@ pub enum Message {
     Adjust(Adjust),
     Toggle,
     Quit,
+    NextPort,
+    SetPortName(String),
     Continue,
 }
 
@@ -29,12 +32,13 @@ fn key_to_message(key: KeyCode) -> Option<Message> {
         KeyCode::Char('j') => Message::Adjust(Adjust::Decrease),
         KeyCode::Char(' ') => Message::Toggle,
         KeyCode::Char('q') => Message::Quit,
+        KeyCode::Tab => Message::NextPort,
         _ => return None,
     };
     Some(msg)
 }
 
-pub fn handle_input(message_tx: &mpsc::Sender<Message>) -> bool {
+fn handle_input(message_tx: &mpsc::Sender<Message>) -> bool {
     let Ok(event) = event::read() else {
         return false;
     };
@@ -51,4 +55,8 @@ pub fn handle_input(message_tx: &mpsc::Sender<Message>) -> bool {
         Event::Resize(..) => message_tx.send(Message::Continue).is_ok(),
         _ => true,
     }
+}
+
+pub fn input_loop(message_tx: mpsc::Sender<Message>) {
+    while handle_input(&message_tx) {}
 }
