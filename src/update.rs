@@ -1,5 +1,5 @@
 use crate::{
-    audio::Command,
+    command::Command,
     message::Message,
     model::{Model, Param},
 };

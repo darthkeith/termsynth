@@ -1,4 +1,5 @@
 mod audio;
+mod command;
 mod message;
 mod midi;
 mod model;
@@ -10,7 +11,8 @@ use std::{io::Result, sync::mpsc, thread};
 use ratatui::DefaultTerminal;
 
 use crate::{
-    audio::{Audio, execute_command},
+    audio::Audio,
+    command::execute_command,
     message::{Message, input_loop},
     midi::Midi,
     model::Model,
