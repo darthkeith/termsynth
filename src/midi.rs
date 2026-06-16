@@ -1,62 +1,70 @@
 use std::sync::mpsc;
 
-use midir::{MidiInput, MidiInputConnection};
-
 use crate::message::Message;
 
 const CLIENT_NAME: &str = "Terminal Synth";
 
+struct ActiveMidiConnection {
+    port_index: usize,
+    port_name: String,
+    _connection: midir::MidiInputConnection<()>,
+}
+
 pub struct Midi {
     message_tx: mpsc::Sender<Message>,
+    active: Option<ActiveMidiConnection>,
+}
+
+fn connect(
     port_index: usize,
-    connection: Option<MidiInputConnection<()>>,
+    message_tx: mpsc::Sender<Message>,
+) -> Option<ActiveMidiConnection> {
+    let midi_in = midir::MidiInput::new(CLIENT_NAME).ok()?;
+    let ports = midi_in.ports();
+    if port_index >= ports.len() {
+        return None;
+    }
+    let port = &ports[port_index];
+    let port_name = midi_in.port_name(&port).ok()?;
+    let _connection = midi_in
+        .connect(
+            port,
+            CLIENT_NAME,
+            move |timestamp, message, _| {
+                message_tx
+                    .send(Message::Midi {
+                        timestamp,
+                        bytes: message.to_vec(),
+                    })
+                    .expect("failed to send MIDI message")
+            },
+            (),
+        )
+        .ok()?;
+    Some(ActiveMidiConnection {
+        port_index,
+        port_name,
+        _connection,
+    })
 }
 
 impl Midi {
     pub fn new(message_tx: mpsc::Sender<Message>) -> Self {
-        let mut midi = Self {
+        Self {
             message_tx,
-            port_index: 0,
-            connection: None,
-        };
-        midi.connect().expect("failed to connect to MIDI input");
-        midi
+            active: None,
+        }
     }
 
     pub fn next_port(&mut self) {
-        self.port_index += 1;
-    }
-
-    pub fn connect(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let midi_in = MidiInput::new(CLIENT_NAME)?;
-        let ports = midi_in.ports();
-        if ports.is_empty() {
-            self.connection = None;
-            return Ok(());
-        }
-        if self.port_index >= ports.len() {
-            self.port_index = 0;
-        }
-        let port = &ports[self.port_index];
-        self.message_tx
-            .send(Message::SetPortName(midi_in.port_name(&port)?))
-            .unwrap();
         let msg_tx = self.message_tx.clone();
-        self.connection = midi_in
-            .connect(
-                port,
-                CLIENT_NAME,
-                move |timestamp, message, _| {
-                    msg_tx
-                        .send(Message::Midi {
-                            timestamp,
-                            bytes: message.to_vec(),
-                        })
-                        .expect("failed to send MIDI message")
-                },
-                (),
-            )
-            .map(Some)?;
-        Ok(())
+        self.active = match &self.active {
+            Some(current) => connect(current.port_index + 1, msg_tx),
+            None => connect(0, msg_tx),
+        };
+        let port_name = self.active.as_ref().map(|c| c.port_name.clone());
+        self.message_tx
+            .send(Message::SetPortName(port_name))
+            .unwrap();
     }
 }

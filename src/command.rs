@@ -44,10 +44,7 @@ pub fn execute_command(command: Command, audio: &Audio, midi: &mut Midi) {
         Command::SetRelease(release) => {
             audio.param_tx.send(ParamUpdate::Release(release)).unwrap();
         }
-        Command::NextPort => {
-            midi.next_port();
-            midi.connect().unwrap();
-        }
+        Command::NextPort => midi.next_port(),
         Command::None => (),
     }
 }

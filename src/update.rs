@@ -43,7 +43,7 @@ pub fn update(mut model: Model, message: Message) -> Option<(Model, Command)> {
         Message::NextPort => {
             return Some((model, Command::NextPort));
         }
-        Message::SetPortName(port_name) => model.port_name = Some(port_name),
+        Message::SetPortName(port_name) => model.port_name = port_name,
         Message::Continue => (),
     };
     Some((model, Command::None))

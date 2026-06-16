@@ -16,7 +16,7 @@ pub enum Message {
     Toggle,
     Quit,
     NextPort,
-    SetPortName(String),
+    SetPortName(Option<String>),
     Continue,
 }
 
