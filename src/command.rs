@@ -1,14 +1,12 @@
-use std::sync::atomic::Ordering;
-
 use crate::{
-    audio::{Audio, ParamUpdate},
+    audio::{Audio, AudioUpdate},
     midi::Midi,
     model::Waveform,
 };
 
 pub enum Command {
-    PlayNote,
-    StopNote,
+    NoteOn(f32),
+    NoteOff,
     SetWaveform(Waveform),
     SetCutoff(f32),
     SetAttack(f32),
@@ -21,28 +19,30 @@ pub enum Command {
 
 pub fn execute_command(command: Command, audio: &Audio, midi: &mut Midi) {
     match command {
-        Command::PlayNote => audio.is_on.store(true, Ordering::Relaxed),
-        Command::StopNote => audio.is_on.store(false, Ordering::Relaxed),
+        Command::NoteOn(freq) => {
+            audio.audio_tx.send(AudioUpdate::NoteOn(freq)).unwrap()
+        }
+        Command::NoteOff => audio.audio_tx.send(AudioUpdate::NoteOff).unwrap(),
         Command::SetWaveform(waveform) => {
             audio
-                .param_tx
-                .send(ParamUpdate::Waveform(waveform))
+                .audio_tx
+                .send(AudioUpdate::Waveform(waveform))
                 .unwrap();
         }
         Command::SetCutoff(cutoff) => {
-            audio.param_tx.send(ParamUpdate::Cutoff(cutoff)).unwrap();
+            audio.audio_tx.send(AudioUpdate::Cutoff(cutoff)).unwrap();
         }
         Command::SetAttack(attack) => {
-            audio.param_tx.send(ParamUpdate::Attack(attack)).unwrap();
+            audio.audio_tx.send(AudioUpdate::Attack(attack)).unwrap();
         }
         Command::SetDecay(decay) => {
-            audio.param_tx.send(ParamUpdate::Decay(decay)).unwrap();
+            audio.audio_tx.send(AudioUpdate::Decay(decay)).unwrap();
         }
         Command::SetSustain(sustain) => {
-            audio.param_tx.send(ParamUpdate::Sustain(sustain)).unwrap();
+            audio.audio_tx.send(AudioUpdate::Sustain(sustain)).unwrap();
         }
         Command::SetRelease(release) => {
-            audio.param_tx.send(ParamUpdate::Release(release)).unwrap();
+            audio.audio_tx.send(AudioUpdate::Release(release)).unwrap();
         }
         Command::NextPort => midi.next_port(),
         Command::None => (),

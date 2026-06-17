@@ -1,11 +1,4 @@
-use std::{
-    f32::consts::PI,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
-};
+use std::{f32::consts::PI, sync::mpsc};
 
 use cpal::{
     Stream,
@@ -13,8 +6,6 @@ use cpal::{
 };
 
 use crate::model::{Adsr, DEFAULT_CUTOFF, Waveform};
-
-const FREQ: f32 = 440.0;
 
 enum EnvelopeStage {
     Attack(f32),
@@ -24,7 +15,9 @@ enum EnvelopeStage {
     Idle,
 }
 
-pub enum ParamUpdate {
+pub enum AudioUpdate {
+    NoteOn(f32),
+    NoteOff,
     Waveform(Waveform),
     Cutoff(f32),
     Attack(f32),
@@ -34,6 +27,7 @@ pub enum ParamUpdate {
 }
 
 struct AudioProcessor {
+    is_on: bool,
     waveform: Waveform,
     alpha: f32,
     adsr: Adsr,
@@ -46,13 +40,11 @@ struct AudioProcessor {
     decay_increment: f32,
     release_increment: f32,
     prev_output: f32,
-    is_on: Arc<AtomicBool>,
-    param_rx: mpsc::Receiver<ParamUpdate>,
+    audio_rx: mpsc::Receiver<AudioUpdate>,
 }
 
 pub struct Audio {
-    pub is_on: Arc<AtomicBool>,
-    pub param_tx: mpsc::Sender<ParamUpdate>,
+    pub audio_tx: mpsc::Sender<AudioUpdate>,
     _stream: Stream,
 }
 
@@ -76,12 +68,12 @@ impl AudioProcessor {
     fn new(
         channels: usize,
         sample_rate: f32,
-        is_on: Arc<AtomicBool>,
-        param_rx: mpsc::Receiver<ParamUpdate>,
+        audio_rx: mpsc::Receiver<AudioUpdate>,
     ) -> Self {
         let alpha = cutoff_to_alpha(DEFAULT_CUTOFF, sample_rate);
         let adsr = Adsr::new();
         Self {
+            is_on: false,
             waveform: Waveform::Sine,
             alpha,
             adsr,
@@ -89,33 +81,37 @@ impl AudioProcessor {
             phase: 0.0,
             channels,
             sample_rate,
-            phase_increment: FREQ / sample_rate,
+            phase_increment: 0.0,
             attack_increment: 1.0 / (adsr.attack * sample_rate),
             decay_increment: 1.0 / (adsr.decay * sample_rate),
             release_increment: 1.0 / (adsr.release * sample_rate),
             prev_output: 0.0,
-            is_on,
-            param_rx,
+            audio_rx,
         }
     }
 
-    fn receive_param_updates(&mut self) {
-        while let Ok(update) = self.param_rx.try_recv() {
+    fn receive_updates(&mut self) {
+        while let Ok(update) = self.audio_rx.try_recv() {
             match update {
-                ParamUpdate::Waveform(waveform) => self.waveform = waveform,
-                ParamUpdate::Cutoff(cutoff) => {
+                AudioUpdate::NoteOn(freq) => {
+                    self.is_on = true;
+                    self.phase_increment = freq / self.sample_rate;
+                }
+                AudioUpdate::NoteOff => self.is_on = false,
+                AudioUpdate::Waveform(waveform) => self.waveform = waveform,
+                AudioUpdate::Cutoff(cutoff) => {
                     self.alpha = cutoff_to_alpha(cutoff, self.sample_rate);
                 }
-                ParamUpdate::Attack(attack) => {
+                AudioUpdate::Attack(attack) => {
                     self.attack_increment = 1.0 / (attack * self.sample_rate);
                     self.adsr.attack = attack;
                 }
-                ParamUpdate::Decay(decay) => {
+                AudioUpdate::Decay(decay) => {
                     self.decay_increment = 1.0 / (decay * self.sample_rate);
                     self.adsr.decay = decay;
                 }
-                ParamUpdate::Sustain(sustain) => self.adsr.sustain = sustain,
-                ParamUpdate::Release(release) => {
+                AudioUpdate::Sustain(sustain) => self.adsr.sustain = sustain,
+                AudioUpdate::Release(release) => {
                     self.release_increment = 1.0 / (release * self.sample_rate);
                     self.adsr.release = release;
                 }
@@ -123,8 +119,8 @@ impl AudioProcessor {
         }
     }
 
-    fn update_envelope_on_signal(&mut self) {
-        if self.is_on.load(Ordering::Relaxed) {
+    fn update_envelope_stage(&mut self) {
+        if self.is_on {
             match self.envelope_stage {
                 EnvelopeStage::Release(_) | EnvelopeStage::Idle => {
                     let t = self.envelope_stage.amplitude(self.adsr.sustain);
@@ -200,8 +196,8 @@ impl AudioProcessor {
     }
 
     fn process(&mut self, data: &mut [f32]) {
-        self.receive_param_updates();
-        self.update_envelope_on_signal();
+        self.receive_updates();
+        self.update_envelope_stage();
         for frame in data.chunks_mut(self.channels) {
             let envelope = self.envelope_stage.amplitude(self.adsr.sustain);
             let value = self.apply_filter(self.generate_sample()) * envelope;
@@ -227,13 +223,11 @@ impl Audio {
             cpal::SampleFormat::F32 => (),
             _ => panic!("unsupported sample format"),
         }
-        let is_on = Arc::new(AtomicBool::new(false));
-        let (param_tx, param_rx) = mpsc::channel::<ParamUpdate>();
+        let (audio_tx, audio_rx) = mpsc::channel::<AudioUpdate>();
         let mut processor = AudioProcessor::new(
             config.channels() as usize,
             config.sample_rate() as f32,
-            is_on.clone(),
-            param_rx,
+            audio_rx,
         );
         let _stream = device
             .build_output_stream(
@@ -244,10 +238,6 @@ impl Audio {
             )
             .unwrap();
         _stream.play().unwrap();
-        Self {
-            is_on,
-            param_tx,
-            _stream,
-        }
+        Self { audio_tx, _stream }
     }
 }

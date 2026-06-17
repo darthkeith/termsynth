@@ -6,6 +6,8 @@ use ratatui::{
 
 use crate::model::{Model, Param};
 
+const NONE: &str = "None";
+
 pub fn view(model: &Model, frame: &mut Frame) {
     let style = |param| {
         if model.selected == param {
@@ -16,17 +18,20 @@ pub fn view(model: &Model, frame: &mut Frame) {
     };
     let midi_port_name = match &model.port_name {
         Some(name) => &name,
-        None => "None",
+        None => NONE,
     };
     let midi_text = match &model.last_midi {
         Some((timestamp, bytes)) => {
             format!("Timestamp: {timestamp}, Bytes: {bytes:?}")
         }
-        None => "None".to_string(),
+        None => NONE.to_string(),
     };
-    let mut lines = vec![
-        Line::from("Press q to quit"),
-        Line::from("Press Space to toggle note"),
+    let note = match &model.note_state {
+        Some(n) => n.to_string(),
+        None => NONE.to_string(),
+    };
+    let lines = vec![
+        Line::from("q to quit / Space to toggle test note"),
         Line::from(format!("Waveform: {}", model.waveform.name())),
         Line::from(format!(" Cutoff: {:.0} Hz", model.cutoff))
             .style(style(Param::Cutoff)),
@@ -40,10 +45,8 @@ pub fn view(model: &Model, frame: &mut Frame) {
             .style(style(Param::Release)),
         Line::from(format!("Midi Input: {midi_port_name}")),
         Line::from(format!("Last MIDI: {midi_text}")),
+        Line::from(format!("Note Playing: {note}")),
     ];
-    if model.is_on {
-        lines.push(Line::from("Note playing..."));
-    }
     let text = Text::from(lines);
     frame.render_widget(text, frame.area());
 }

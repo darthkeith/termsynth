@@ -39,12 +39,12 @@ pub enum Adjust {
 }
 
 pub struct Model {
-    pub is_on: bool,
     pub waveform: Waveform,
     pub cutoff: f32,
     pub adsr: Adsr,
     pub selected: Param,
     pub port_name: Option<String>,
+    pub note_state: Option<u8>,
     pub last_midi: Option<(u64, Vec<u8>)>,
 }
 
@@ -100,12 +100,12 @@ impl Adsr {
 impl Model {
     pub fn new() -> Self {
         Self {
-            is_on: false,
             waveform: Waveform::Sine,
             cutoff: DEFAULT_CUTOFF,
             adsr: Adsr::new(),
             selected: Param::Attack,
             port_name: None,
+            note_state: None,
             last_midi: None,
         }
     }
