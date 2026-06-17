@@ -48,18 +48,6 @@ pub struct Audio {
     _stream: Stream,
 }
 
-impl EnvelopeStage {
-    fn amplitude(&self, sustain: f32) -> f32 {
-        match self {
-            Self::Attack(t) => *t,
-            Self::Decay(t) => 1.0 + *t * (sustain - 1.0),
-            Self::Sustain => sustain,
-            Self::Release(t) => (1.0 - *t) * sustain,
-            Self::Idle => 0.0,
-        }
-    }
-}
-
 fn cutoff_to_alpha(cutoff: f32, sample_rate: f32) -> f32 {
     1.0 - (-2.0 * PI * cutoff / sample_rate).exp()
 }
@@ -115,20 +103,29 @@ impl AudioProcessor {
         }
     }
 
+    fn envelope(&self) -> f32 {
+        match self.envelope_stage {
+            EnvelopeStage::Attack(t) => t,
+            EnvelopeStage::Decay(t) => 1.0 + t * (self.sustain - 1.0),
+            EnvelopeStage::Sustain => self.sustain,
+            EnvelopeStage::Release(t) => (1.0 - t) * self.sustain,
+            EnvelopeStage::Idle => 0.0,
+        }
+    }
+
     fn update_envelope_stage(&mut self) {
         if self.is_on {
             match self.envelope_stage {
                 EnvelopeStage::Release(_) | EnvelopeStage::Idle => {
-                    let t = self.envelope_stage.amplitude(self.sustain);
-                    self.envelope_stage = EnvelopeStage::Attack(t);
+                    self.envelope_stage =
+                        EnvelopeStage::Attack(self.envelope());
                 }
                 _ => (),
             };
         } else {
             match self.envelope_stage {
                 EnvelopeStage::Attack(_) | EnvelopeStage::Decay(_) => {
-                    let amplitude = self.envelope_stage.amplitude(self.sustain);
-                    let t = 1.0 - (amplitude / self.sustain);
+                    let t = 1.0 - (self.envelope() / self.sustain);
                     self.envelope_stage = EnvelopeStage::Release(t);
                 }
                 EnvelopeStage::Sustain => {
@@ -194,8 +191,8 @@ impl AudioProcessor {
         self.receive_updates();
         self.update_envelope_stage();
         for frame in data.chunks_mut(self.channels) {
-            let envelope = self.envelope_stage.amplitude(self.sustain);
-            let value = self.apply_filter(self.generate_sample()) * envelope;
+            let value =
+                self.apply_filter(self.generate_sample()) * self.envelope();
             for sample in frame.iter_mut() {
                 *sample = value;
             }
