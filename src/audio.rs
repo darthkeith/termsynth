@@ -30,11 +30,11 @@ struct AudioProcessor {
     is_on: bool,
     waveform: Waveform,
     alpha: f32,
-    adsr: Adsr,
     envelope_stage: EnvelopeStage,
     phase: f32,
     channels: usize,
     sample_rate: f32,
+    sustain: f32,
     phase_increment: f32,
     attack_increment: f32,
     decay_increment: f32,
@@ -70,17 +70,16 @@ impl AudioProcessor {
         sample_rate: f32,
         audio_rx: mpsc::Receiver<AudioUpdate>,
     ) -> Self {
-        let alpha = cutoff_to_alpha(DEFAULT_CUTOFF, sample_rate);
         let adsr = Adsr::new();
         Self {
             is_on: false,
             waveform: Waveform::Sine,
-            alpha,
-            adsr,
+            alpha: cutoff_to_alpha(DEFAULT_CUTOFF, sample_rate),
             envelope_stage: EnvelopeStage::Idle,
             phase: 0.0,
             channels,
             sample_rate,
+            sustain: adsr.sustain,
             phase_increment: 0.0,
             attack_increment: 1.0 / (adsr.attack * sample_rate),
             decay_increment: 1.0 / (adsr.decay * sample_rate),
@@ -104,16 +103,13 @@ impl AudioProcessor {
                 }
                 AudioUpdate::Attack(attack) => {
                     self.attack_increment = 1.0 / (attack * self.sample_rate);
-                    self.adsr.attack = attack;
                 }
                 AudioUpdate::Decay(decay) => {
                     self.decay_increment = 1.0 / (decay * self.sample_rate);
-                    self.adsr.decay = decay;
                 }
-                AudioUpdate::Sustain(sustain) => self.adsr.sustain = sustain,
+                AudioUpdate::Sustain(sustain) => self.sustain = sustain,
                 AudioUpdate::Release(release) => {
                     self.release_increment = 1.0 / (release * self.sample_rate);
-                    self.adsr.release = release;
                 }
             }
         }
@@ -123,7 +119,7 @@ impl AudioProcessor {
         if self.is_on {
             match self.envelope_stage {
                 EnvelopeStage::Release(_) | EnvelopeStage::Idle => {
-                    let t = self.envelope_stage.amplitude(self.adsr.sustain);
+                    let t = self.envelope_stage.amplitude(self.sustain);
                     self.envelope_stage = EnvelopeStage::Attack(t);
                 }
                 _ => (),
@@ -131,9 +127,8 @@ impl AudioProcessor {
         } else {
             match self.envelope_stage {
                 EnvelopeStage::Attack(_) | EnvelopeStage::Decay(_) => {
-                    let amplitude =
-                        self.envelope_stage.amplitude(self.adsr.sustain);
-                    let t = 1.0 - (amplitude / self.adsr.sustain);
+                    let amplitude = self.envelope_stage.amplitude(self.sustain);
+                    let t = 1.0 - (amplitude / self.sustain);
                     self.envelope_stage = EnvelopeStage::Release(t);
                 }
                 EnvelopeStage::Sustain => {
@@ -199,7 +194,7 @@ impl AudioProcessor {
         self.receive_updates();
         self.update_envelope_stage();
         for frame in data.chunks_mut(self.channels) {
-            let envelope = self.envelope_stage.amplitude(self.adsr.sustain);
+            let envelope = self.envelope_stage.amplitude(self.sustain);
             let value = self.apply_filter(self.generate_sample()) * envelope;
             for sample in frame.iter_mut() {
                 *sample = value;
