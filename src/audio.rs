@@ -208,22 +208,37 @@ impl Audio {
         let device = host
             .default_output_device()
             .expect("no output device available");
-        let config = device
+        let supported_config = device
             .default_output_config()
             .expect("no default output config");
-        match config.sample_format() {
-            cpal::SampleFormat::F32 => (),
-            _ => panic!("unsupported sample format"),
+
+        // Require f32 sample format
+        let f32_config =
+            if supported_config.sample_format() == cpal::SampleFormat::F32 {
+                supported_config
+            } else {
+                device
+                    .supported_output_configs()
+                    .expect("error querying output configs")
+                    .find(|c| c.sample_format() == cpal::SampleFormat::F32)
+                    .expect("device has no F32 output config")
+                    .with_standard_sample_rate()
+            };
+
+        let channels = f32_config.channels() as usize;
+        let sample_rate = f32_config.sample_rate() as f32;
+        let mut config = f32_config.config();
+        if let cpal::SupportedBufferSize::Range { min, max } =
+            *f32_config.buffer_size()
+        {
+            config.buffer_size = cpal::BufferSize::Fixed(min.max(64).min(max));
         }
         let (audio_tx, audio_rx) = mpsc::channel::<AudioUpdate>();
-        let mut processor = AudioProcessor::new(
-            config.channels() as usize,
-            config.sample_rate() as f32,
-            audio_rx,
-        );
+        let mut processor =
+            AudioProcessor::new(channels, sample_rate, audio_rx);
         let _stream = device
             .build_output_stream(
-                config.into(),
+                config,
                 move |data, _| processor.process(data),
                 |err| eprintln!("audio stream error: {}", err),
                 None,
